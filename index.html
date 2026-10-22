@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en" class="bg-slate-950">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Tracker</title>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style type="text/tailwindcss">
+@layer components{
+ .card{@apply bg-slate-900 border border-slate-800 rounded-2xl}
+ .lbl{@apply block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2}
+ .inp{@apply w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm font-medium text-white focus:outline-none focus:border-amber-500}
+ .th{@apply py-3 px-4}
+ .btn{@apply px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold rounded-lg inline-flex items-center gap-1.5}
+}
+</style>
+<style>
+body{font-family:Inter,system-ui,sans-serif}
+@keyframes scan{0%,100%{top:5%}50%{top:92%}}
+.laser{animation:scan 2s infinite ease-in-out}
+#qmQ img{width:240px;height:240px;image-rendering:pixelated}
+@media print{header,main,#qm .noprint{display:none!important}#qm{position:static!important;background:#fff!important}}
+</style>
+</head>
+<body class="min-h-screen text-slate-100 antialiased">
+
+<header class="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
+ <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+  <div class="flex items-center gap-3">
+   <div class="bg-gradient-to-tr from-amber-500 to-amber-600 p-2.5 rounded-xl text-slate-950 shadow-lg shadow-amber-500/20"><i data-lucide="qr-code" class="w-6 h-6"></i></div>
+   <div>
+    <div class="font-extrabold text-xl tracking-tight leading-none">SITE<span class="text-amber-500">TRACKER</span></div>
+    <div class="text-[11px] text-slate-400 mt-1">GPS verified on-site attendance</div>
+   </div>
+  </div>
+  <div class="flex items-center gap-3">
+   <div class="hidden md:block text-right border-r border-slate-800 pr-3">
+    <div id="clock" class="text-sm font-mono font-bold">--:--:--</div><div id="date" class="text-xs text-slate-400"></div>
+   </div>
+   <div class="bg-slate-950 p-1 rounded-lg border border-slate-800 flex gap-1">
+    <button id="tW" onclick="sw('W')" class="px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5"><i data-lucide="smartphone" class="w-3.5 h-3.5"></i>Worker</button>
+    <button id="tA" onclick="sw('A')" class="px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5"><i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>Admin</button>
+   </div>
+  </div>
+ </div>
+</header>
+
+<main class="max-w-6xl mx-auto px-4 py-6">
+
+<!-- WORKER VIEW -->
+<div id="vW" class="max-w-md mx-auto space-y-5">
+ <div id="banner" class="hidden card !border-emerald-500/30 !bg-emerald-950/40 p-4">
+  <div class="flex items-center justify-between mb-2">
+   <div class="flex items-center gap-2">
+    <span class="relative flex h-3 w-3"><span class="animate-ping absolute h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative rounded-full h-3 w-3 bg-emerald-500"></span></span>
+    <span class="text-xs font-bold uppercase tracking-wider text-emerald-400">On shift</span>
+   </div>
+   <span id="bSite" class="text-xs bg-emerald-900/60 text-emerald-200 border border-emerald-700/50 px-2.5 py-0.5 rounded-full"></span>
+  </div>
+  <div class="text-xs text-slate-400">Time on site</div>
+  <div id="bTimer" class="text-3xl font-mono font-extrabold">00:00:00</div>
+  <div class="mt-3 pt-3 border-t border-emerald-800/40 flex justify-between text-xs text-slate-300">
+   <div>Punched in <span id="bIn" class="font-semibold text-white"></span></div><div id="bName" class="font-semibold text-white"></div>
+  </div>
+ </div>
+
+ <div class="card shadow-xl overflow-hidden">
+  <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+   <div>
+    <h2 class="text-lg font-bold flex items-center gap-2"><i data-lucide="scan-line" class="w-5 h-5 text-amber-500"></i>GeoPunch</h2>
+    <p class="text-xs text-slate-400">Scan the site QR, confirm location, punch</p>
+   </div>
+   <button onclick="getFix().catch(()=>{})" class="btn"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Refresh GPS</button>
+  </div>
+  <div class="p-5 space-y-5">
+   <div>
+    <label class="lbl" for="sid">1. Your Staff ID</label>
+    <input id="sid" class="inp uppercase" autocomplete="off" autocapitalize="characters" placeholder="e.g. W001">
+   </div>
+
+   <div>
+    <label class="lbl">2. Scan site QR code</label>
+    <div class="relative bg-slate-950 border-2 border-dashed border-slate-800 rounded-xl overflow-hidden min-h-[200px] flex items-center justify-center text-center p-3">
+     <video id="vid" playsinline muted class="hidden absolute inset-0 w-full h-full object-cover"></video>
+     <div id="laser" class="laser hidden absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-amber-400 to-transparent shadow-[0_0_8px_#f59e0b] z-10"></div>
+     <div id="ph" class="space-y-3">
+      <div class="w-16 h-16 mx-auto rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-amber-500"><i data-lucide="qr-code" class="w-8 h-8"></i></div>
+      <div class="text-xs text-slate-400">Point your camera at the QR code posted at the site</div>
+      <button onclick="startScan()" class="btn mx-auto"><i data-lucide="camera" class="w-3.5 h-3.5"></i>Open scanner</button>
+     </div>
+     <div id="sc" class="hidden w-full bg-slate-900/90 border border-slate-700 rounded-lg p-3 text-left space-y-1">
+      <div class="flex items-center justify-between"><span class="text-xs text-amber-400 font-bold uppercase tracking-wider">Site detected</span><span id="sCode" class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded font-mono"></span></div>
+      <div id="sName" class="text-base font-bold"></div>
+      <button onclick="startScan()" class="text-[11px] text-slate-400 underline">Scan a different site</button>
+     </div>
+    </div>
+   </div>
+
+   <div class="bg-slate-950 rounded-xl p-3.5 border border-slate-800 space-y-2.5">
+    <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+     <div class="flex items-center gap-2 text-xs font-bold uppercase text-slate-300"><i data-lucide="navigation" class="w-3.5 h-3.5 text-sky-400"></i>3. GPS verification</div>
+     <span id="gAcc" class="text-[10px] text-slate-400 font-mono">--</span>
+    </div>
+    <div class="grid grid-cols-2 gap-2 text-[11px]">
+     <div><span class="text-slate-500 block text-[10px]">Your position</span><span id="gPos" class="font-mono text-slate-300">--</span></div>
+     <div><span class="text-slate-500 block text-[10px]">Distance to site</span><span id="gDist" class="font-mono font-semibold">--</span></div>
+    </div>
+    <div id="gBox" class="p-2.5 rounded-lg border text-xs bg-slate-800/50 border-slate-700 text-slate-300">
+     <div id="gT" class="font-bold">Waiting for site</div><div id="gS" class="text-[11px] opacity-80">Scan a site QR code to check your location.</div>
+    </div>
+   </div>
+
+   <div>
+    <button id="bIn2" class="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-slate-950 font-extrabold rounded-xl shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 active:scale-[.99] disabled:opacity-50"><i data-lucide="log-in" class="w-5 h-5"></i>PUNCH IN TO SITE</button>
+    <button id="bOut" class="hidden w-full py-3.5 bg-gradient-to-r from-rose-500 to-rose-600 text-white font-extrabold rounded-xl shadow-lg shadow-rose-500/20 flex items-center justify-center gap-2 active:scale-[.99] disabled:opacity-50"><i data-lucide="log-out" class="w-5 h-5"></i>PUNCH OUT FROM SITE</button>
+   </div>
+   <div id="toast" class="hidden rounded-xl border p-3 text-sm"></div>
+   <p class="text-[11px] text-slate-500">Your location and the time are recorded only when you tap Punch In or Punch Out, to confirm you are on site. Tap Allow when your phone asks for location access.</p>
+  </div>
+ </div>
+</div>
+
+<!-- ADMIN VIEW -->
+<div id="vA" class="hidden space-y-6">
+ <div id="gate" class="card max-w-sm mx-auto p-5 space-y-3">
+  <div class="font-bold flex items-center gap-2"><i data-lucide="lock" class="w-5 h-5 text-amber-500"></i>Admin access</div>
+  <input id="pin" type="password" inputmode="numeric" class="inp" placeholder="Admin PIN">
+  <button id="unlock" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm">Unlock dashboard</button>
+  <p id="pinErr" class="text-xs text-rose-400"></p>
+ </div>
+ <div id="dash" class="hidden space-y-6">
+  <div id="stats" class="grid grid-cols-2 md:grid-cols-5 gap-3"></div>
+  <div class="flex items-center justify-between border-b border-slate-800">
+   <div class="flex gap-6">
+    <button id="sbS" onclick="sub('S')" class="pb-3 text-sm font-bold border-b-2 flex items-center gap-2"><i data-lucide="building-2" class="w-4 h-4"></i>Job sites</button>
+    <button id="sbL" onclick="sub('L')" class="pb-3 text-sm font-bold border-b-2 flex items-center gap-2"><i data-lucide="list-checks" class="w-4 h-4"></i>Attendance log</button>
+   </div>
+   <button onclick="loadAdmin()" class="btn mb-2"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Refresh</button>
+  </div>
+  <div id="pS" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+  <div id="pL" class="hidden space-y-4">
+   <div class="card p-4 flex flex-col sm:flex-row gap-3 justify-between">
+    <div class="flex gap-3 flex-1">
+     <div class="relative flex-1 max-w-md"><i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-500"></i><input id="q" oninput="renderLog()" placeholder="Search worker, ID or site…" class="inp !pl-9 !py-2 !text-xs"></div>
+     <select id="fs" onchange="renderLog()" class="inp !w-auto !py-2 !text-xs"></select>
+    </div>
+    <button onclick="csv()" class="btn"><i data-lucide="download" class="w-4 h-4 text-emerald-400"></i>Export CSV</button>
+   </div>
+   <div class="card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-left text-xs">
+    <thead class="bg-slate-950 text-slate-400 uppercase tracking-wider border-b border-slate-800"><tr>
+     <th class="th">Worker</th><th class="th">Site</th><th class="th">In</th><th class="th">Out</th><th class="th">Duration</th><th class="th">GPS check</th><th class="th">Status</th></tr></thead>
+    <tbody id="lb" class="divide-y divide-slate-800/60 text-slate-300"></tbody></table></div></div>
+  </div>
+ </div>
+</div>
+</main>
+
+<div id="qm" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+ <div class="bg-white text-slate-900 rounded-2xl p-6 w-full max-w-sm text-center">
+  <div class="text-xs font-bold tracking-widest text-amber-600">SITE TRACKER</div>
+  <h3 id="qmT" class="text-xl font-extrabold"></h3>
+  <div id="qmQ" class="my-3 flex justify-center"></div>
+  <p class="text-sm font-semibold">Scan to punch in or out</p>
+  <p id="qmC" class="text-xs text-slate-500 font-mono mt-1"></p>
+  <div class="noprint mt-4 flex gap-2">
+   <button onclick="window.print()" class="flex-1 py-2.5 rounded-lg bg-slate-900 text-white text-sm font-bold">Print poster</button>
+   <button onclick="$('qm').classList.add('hidden')" class="flex-1 py-2.5 rounded-lg bg-slate-200 text-sm font-bold">Close</button>
+  </div>
+ </div>
+</div>
+
+<script>
+const API = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+const $ = i => document.getElementById(i);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ls = {get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}}};
+const J = k => { try { return JSON.parse(ls.get(k)); } catch (e) { return null; } };
+const icons = () => window.lucide && lucide.createIcons();
+const api = p => fetch(API + "?" + new URLSearchParams(p)).then(r => r.json());
+const post = d => fetch(API, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(d)}).then(r => r.json());
+const tm = t => t ? new Date(t).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}) : "--";
+const dd = t => t ? new Date(t).toLocaleDateString([], {day:"2-digit", month:"short"}) : "";
+const hms = ms => { const s = Math.max(0, Math.floor(ms/1e3)); return [s/3600|0, s/60%60|0, s%60].map(n => String(n).padStart(2,"0")).join(":"); };
+const dur = h => { const m = Math.round(h*60); return (m/60|0) + "h " + (m%60) + "m"; };
+const hav = (a,b,c,d) => { const r = x => x*Math.PI/180, s = Math.sin(r(c-a)/2)**2 + Math.cos(r(a))*Math.cos(r(c))*Math.sin(r(d-b)/2)**2; return 2*6371000*Math.asin(Math.sqrt(s)); };
+
+let site = null, fix = null, stream = null, data = null, pin = "", SH = [];
+
+/* ---------- tabs ---------- */
+function sw(v) {
+  $("vW").classList.toggle("hidden", v !== "W"); $("vA").classList.toggle("hidden", v !== "A");
+  const on = "bg-amber-500 text-slate-950 shadow-sm", off = "text-slate-400 hover:text-white";
+  $("tW").className = "px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 " + (v === "W" ? on : off);
+  $("tA").className = "px-3 py-1.5 text-xs font-semibold rounded-md flex items-center gap-1.5 " + (v === "A" ? on : off);
+  if (v !== "W") stopScan();
+}
+function sub(v) {
+  $("pS").classList.toggle("hidden", v !== "S"); $("pL").classList.toggle("hidden", v !== "L");
+  $("sbS").className = "pb-3 text-sm font-bold border-b-2 flex items-center gap-2 " + (v === "S" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400");
+  $("sbL").className = "pb-3 text-sm font-bold border-b-2 flex items-center gap-2 " + (v === "L" ? "border-amber-500 text-amber-400" : "border-transparent text-slate-400");
+}
+
+/* ---------- clock + shift timer ---------- */
+function tick() {
+  const n = new Date();
+  $("clock").textContent = n.toLocaleTimeString(); $("date").textContent = n.toLocaleDateString([], {weekday:"short", day:"2-digit", month:"short", year:"numeric"});
+  const s = J("st_sess"); if (s) $("bTimer").textContent = hms(n - new Date(s.ts));
+}
+
+/* ---------- site + GPS ---------- */
+async function loadSite(code) {
+  try {
+    const r = await api({action:"site", code});
+    if (!r.ok) throw 0;
+    site = r.site;
+  } catch (e) { return toast("err", "Unknown site QR code. Please scan a valid Site Tracker code."); }
+  $("ph").classList.add("hidden"); $("sc").classList.remove("hidden");
+  $("sName").textContent = site.name; $("sCode").textContent = site.code;
+  getFix().catch(() => {});
+}
+function setGps(kind, t, s) {
+  const k = {ok:"bg-emerald-500/10 border-emerald-500/30 text-emerald-400", bad:"bg-rose-500/10 border-rose-500/30 text-rose-400", warn:"bg-amber-500/10 border-amber-500/30 text-amber-400"}[kind];
+  $("gBox").className = "p-2.5 rounded-lg border text-xs " + k; $("gT").textContent = t; $("gS").textContent = s;
+}
+function paint() {
+  if (!fix) return;
+  $("gPos").textContent = fix.lat.toFixed(5) + ", " + fix.lng.toFixed(5); $("gAcc").textContent = "Accuracy ±" + fix.acc + " m";
+  if (!site) { $("gDist").textContent = "--"; return setGps("warn", "Location found", "Scan a site QR code to verify the geofence."); }
+  const d = Math.round(hav(fix.lat, fix.lng, site.lat, site.lng)); $("gDist").textContent = d + " m";
+  if (d <= site.radius) setGps("ok", "Location verified (on site)", "You are within " + site.radius + " m of the job site.");
+  else setGps("bad", "Outside job site zone", "You are " + d + " m away. The punch will be recorded but flagged.");
+}
+function getFix() {
+  setGps("warn", "Locating…", "Acquiring GPS signal");
+  return new Promise((ok, no) => {
+    if (!navigator.geolocation) { setGps("bad", "No GPS support", "This browser cannot read location."); return no({}); }
+    navigator.geolocation.getCurrentPosition(p => {
+      fix = {lat:p.coords.latitude, lng:p.coords.longitude, acc:Math.round(p.coords.accuracy)}; paint(); ok(fix);
+    }, e => {
+      fix = null;
+      setGps("bad", e.code === 1 ? "Location blocked" : "No GPS signal", e.code === 1 ? "Allow location for this page in your browser settings." : "Move to an open area and tap Refresh GPS.");
+      no(e);
+    }, {enableHighAccuracy:true, timeout:20000, maximumAge:0});
+  });
+}
+
+/* ---------- QR scanner ---------- */
+function codeFrom(t) {
+  try { return (new URL(t).searchParams.get("site") || "").toUpperCase(); }
+  catch (e) { return /^[A-Za-z0-9_-]{2,20}$/.test(t) ? t.toUpperCase() : ""; }
+}
+async function startScan() {
+  try { stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}); }
+  catch (e) { return toast("err", "Camera is blocked. Use your phone’s own camera app to scan the QR code instead."); }
+  const v = $("vid"); v.srcObject = stream; await v.play();
+  $("ph").classList.add("hidden"); $("sc").classList.add("hidden"); v.classList.remove("hidden"); $("laser").classList.remove("hidden");
+  const c = document.createElement("canvas"), x = c.getContext("2d", {willReadFrequently:true});
+  (function loop() {
+    if (!stream) return;
+    if (v.videoWidth) {
+      c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0);
+      const q = jsQR(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+      const code = q && codeFrom(q.data);
+      if (code) { stopScan(); return loadSite(code); }
+    }
+    requestAnimationFrame(loop);
+  })();
+}
+function stopScan() {
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  $("vid").classList.add("hidden"); $("laser").classList.add("hidden");
+  if (!site) $("ph").classList.remove("hidden"); else $("sc").classList.remove("hidden");
+}
+
+/* ---------- punch ---------- */
+function busy(b) { $("bIn2").disabled = $("bOut").disabled = b; }
+function toast(k, html) {
+  const c = {good:"bg-emerald-500/10 border-emerald-500/30 text-emerald-300", warn:"bg-amber-500/10 border-amber-500/30 text-amber-300", err:"bg-rose-500/10 border-rose-500/30 text-rose-300"}[k];
+  const t = $("toast"); t.className = "rounded-xl border p-3 text-sm " + c; t.innerHTML = html;
+}
+async function punch(act) {
+  const id = $("sid").value.trim().toUpperCase();
+  if (!id) return toast("err", "Enter your Staff ID first.");
+  if (!site) return toast("err", "Scan the site QR code first.");
+  ls.set("st_id", id); busy(true); toast("warn", "Getting your location…");
+  let f; try { f = await getFix(); } catch (e) { busy(false); return toast("err", "Could not get your location. Fix GPS access and try again."); }
+  const d = {id, site:site.code, act, lat:f.lat, lng:f.lng, acc:f.acc, ts:new Date().toISOString()};
+  try { done(await post(d), d); }
+  catch (e) { queue(d); session(d, "Worker " + id); toast("warn", "<b>No internet.</b> Your punch is saved on this phone with its time and location, and will send automatically when you are back online."); }
+  busy(false);
+}
+function session(d, name) {
+  if (d.act === "IN") ls.set("st_sess", JSON.stringify({site:d.site, siteName:site ? site.name : d.site, ts:d.ts, name}));
+  else ls.del("st_sess");
+  renderSession();
+}
+function done(r, d) {
+  if (!r.ok) return toast("err", esc(r.error || "Something went wrong. Try again."));
+  session(d, r.name);
+  const good = String(r.status).indexOf("On site") === 0;
+  toast(good ? "good" : "warn", "<b>" + (d.act === "IN" ? "Punched in" : "Punched out") + ": " + esc(r.name) + "</b><br>" + new Date(d.ts).toLocaleString() +
+    "<br><span class='opacity-80 text-xs'>" + esc(r.status) + " · " + r.dist + " m from site · GPS ±" + d.acc + " m" + (r.hours != null ? " · " + dur(r.hours) + " on site" : "") + "</span>");
+}
+function renderSession() {
+  const s = J("st_sess");
+  $("banner").classList.toggle("hidden", !s); $("bIn2").classList.toggle("hidden", !!s); $("bOut").classList.toggle("hidden", !s);
+  if (s) { $("bSite").textContent = s.siteName; $("bIn").textContent = tm(s.ts); $("bName").textContent = s.name; }
+}
+function queue(d) { const q = J("st_q") || []; q.push(d); ls.set("st_q", JSON.stringify(q)); }
+async function flush() {
+  const q = J("st_q") || []; if (!q.length || !navigator.onLine) return;
+  const left = [];
+  for (const d of q) { try { const r = await post(d); if (!r.ok && r.retry) left.push(d); } catch (e) { left.push(d); } }
+  ls.set("st_q", JSON.stringify(left));
+}
+
+/* ---------- admin ---------- */
+async function loadAdmin() {
+  try {
+    const r = await post({admin:1, pin});
+    if (!r.ok) { $("pinErr").textContent = r.error || "Could not load."; $("gate").classList.remove("hidden"); $("dash").classList.add("hidden"); return; }
+    data = r; SH = shifts(r.logs);
+    $("gate").classList.add("hidden"); $("dash").classList.remove("hidden");
+    renderStats(); renderSites(); $("fs").innerHTML = "<option value='ALL'>All sites</option>" + r.sites.map(s => "<option value='" + esc(s.code) + "'>" + esc(s.name) + "</option>").join("");
+    renderLog(); sub($("pL").classList.contains("hidden") ? "S" : "L"); icons();
+  } catch (e) { $("pinErr").textContent = "Could not reach the server. Check the API link."; }
+}
+function shifts(logs) {
+  const L = logs.slice().sort((a, b) => new Date(a.t) - new Date(b.t)), open = {}, out = [];
+  L.forEach(l => {
+    const ok = String(l.status).indexOf("On site") === 0;
+    if (l.act === "IN") { if (open[l.id]) open[l.id].missed = true; const s = {id:l.id, name:l.name, site:l.site, inT:l.t, outT:null, h:null, dist:l.dist, ok}; open[l.id] = s; out.push(s); }
+    else { const s = open[l.id]; if (s) { s.outT = l.t; s.h = l.hours === "" ? null : l.hours; s.ok = s.ok && ok; s.dist = Math.max(s.dist, l.dist); delete open[l.id]; } else out.push({id:l.id, name:l.name, site:l.site, inT:null, outT:l.t, h:null, dist:l.dist, ok}); }
+  });
+  return out.reverse();
+}
+const active = s => s.inT && !s.outT && !s.missed && Date.now() - new Date(s.inT) < 864e5;
+const today = t => t && new Date(t).toDateString() === new Date().toDateString();
+const sname = c => { const s = data.sites.find(x => x.code === c); return s ? s.name : c; };
+function renderStats() {
+  const a = SH.filter(active).length, c = SH.filter(s => s.outT && today(s.outT)).length, f = SH.filter(s => !s.ok && today(s.inT || s.outT)).length;
+  $("stats").innerHTML = [["building-2","sky","Job sites",data.sites.length],["users","indigo","Enrolled workers",data.workers],["user-check","emerald","On site now",a],["clock","amber","Shifts done today",c],["shield-alert","rose","Geofence flags today",f]].map(x =>
+    "<div class='card p-3 flex items-center gap-3'><div class='p-2 rounded-lg bg-" + x[1] + "-500/10 text-" + x[1] + "-400 border border-" + x[1] + "-500/20'><i data-lucide='" + x[0] + "' class='w-4 h-4'></i></div><div><div class='text-xs text-slate-400'>" + x[2] + "</div><div class='text-base font-bold'>" + x[3] + "</div></div></div>").join("");
+}
+function renderSites() {
+  $("pS").innerHTML = data.sites.map(s => {
+    const n = SH.filter(h => active(h) && h.site === s.code).length;
+    return "<div class='card p-4 space-y-3'><div class='flex justify-between items-start'><div><div class='font-bold'>" + esc(s.name) + "</div><div class='text-[11px] font-mono text-slate-400'>" + esc(s.code) + " · " + s.lat.toFixed(5) + ", " + s.lng.toFixed(5) + "</div></div>" +
+      "<span class='text-[10px] font-bold px-2 py-0.5 rounded-full " + (n ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-800 text-slate-400") + "'>" + n + " on site</span></div>" +
+      "<div class='text-xs text-slate-400'>Geofence radius: " + s.radius + " m</div><button onclick=\"qr('" + esc(s.code) + "')\" class='btn'><i data-lucide='qr-code' class='w-3.5 h-3.5 text-amber-400'></i>View QR poster</button></div>";
+  }).join("");
+}
+function renderLog() {
+  const q = $("q").value.toLowerCase(), f = $("fs").value;
+  const rows = SH.filter(s => (f === "ALL" || s.site === f) && (String(s.name).toLowerCase().includes(q) || String(s.id).toLowerCase().includes(q) || sname(s.site).toLowerCase().includes(q))).slice(0, 300);
+  $("lb").innerHTML = rows.length ? rows.map(s => {
+    const a = active(s), st = a ? "<span class='bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase animate-pulse'>On site</span>"
+      : s.outT && s.inT ? "<span class='bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full text-[10px] uppercase'>Completed</span>" : "<span class='bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full text-[10px] uppercase'>No punch " + (s.inT ? "out" : "in") + "</span>";
+    const g = s.ok ? "<span class='text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded text-[10px] font-bold'>Verified (" + s.dist + " m)</span>" : "<span class='text-rose-400 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded text-[10px] font-bold'>Outside zone (" + s.dist + " m)</span>";
+    return "<tr class='hover:bg-slate-800/40'><td class='th'><div class='font-bold text-white'>" + esc(s.name) + "</div><div class='text-[10px] text-slate-400'>" + esc(s.id) + "</div></td><td class='th'>" + esc(sname(s.site)) + "</td>" +
+      "<td class='th font-mono'>" + dd(s.inT) + " " + tm(s.inT) + "</td><td class='th font-mono'>" + (s.outT ? dd(s.outT) + " " + tm(s.outT) : "--") + "</td>" +
+      "<td class='th font-semibold text-amber-400'>" + (s.h != null ? dur(s.h) : a ? "In progress" : "--") + "</td><td class='th'>" + g + "</td><td class='th'>" + st + "</td></tr>";
+  }).join("") : "<tr><td colspan='7' class='text-center py-6 text-slate-500'>No attendance records found.</td></tr>";
+}
+function csv() {
+  let c = "Staff ID,Name,Site,Punch In,Punch Out,Hours,GPS Verified,Max Distance (m)\n";
+  SH.forEach(s => c += [s.id, s.name, sname(s.site), s.inT || "", s.outT || "", s.h == null ? "" : s.h, s.ok ? "YES" : "NO", s.dist].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(",") + "\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([c], {type:"text/csv"})); a.download = "site-tracker-" + new Date().toISOString().slice(0, 10) + ".csv"; a.click();
+}
+function qr(code) {
+  const s = data.sites.find(x => x.code === code), q = qrcode(0, "M");
+  q.addData(location.origin + location.pathname + "?site=" + encodeURIComponent(code)); q.make();
+  $("qmT").textContent = s.name; $("qmC").textContent = s.code; $("qmQ").innerHTML = q.createImgTag(8, 8); $("qm").classList.remove("hidden");
+}
+
+/* ---------- init ---------- */
+$("bIn2").onclick = () => punch("IN"); $("bOut").onclick = () => punch("OUT");
+$("unlock").onclick = () => { pin = $("pin").value; $("pinErr").textContent = ""; loadAdmin(); };
+$("pin").onkeydown = e => { if (e.key === "Enter") $("unlock").click(); };
+addEventListener("online", flush);
+$("sid").value = ls.get("st_id") || "";
+sw("W"); sub("S"); renderSession(); tick(); setInterval(tick, 1000); flush();
+const qs = new URLSearchParams(location.search).get("site");
+if (qs) loadSite(qs.toUpperCase());
+if (location.hash === "#admin") sw("A");
+icons();
+</script>
+</body>
+</html>
