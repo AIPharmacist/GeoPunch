@@ -129,6 +129,8 @@ body{font-family:Inter,system-ui,sans-serif}
  <div id="gate" class="card max-w-sm mx-auto p-5 space-y-3">
   <div class="font-bold flex items-center gap-2"><i data-lucide="lock" class="w-5 h-5 text-amber-500"></i>Admin access</div>
   <input id="pin" type="password" inputmode="numeric" class="inp" placeholder="Admin PIN">
+  <input id="apiUrl" class="inp !text-xs" autocomplete="off" placeholder="Web app link (https://script.google.com/…/exec)">
+  <p class="text-[11px] text-slate-500">Paste your Apps Script Web app link once. It is saved on this device, and the QR posters you print will carry it so workers’ phones pick it up automatically.</p>
   <button id="unlock" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm">Unlock dashboard</button>
   <p id="pinErr" class="text-xs text-rose-400"></p>
  </div>
@@ -174,11 +176,15 @@ body{font-family:Inter,system-ui,sans-serif}
 </div>
 
 <script>
-const API = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+let API = "PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE"; // optional: or just key the link in on the Admin tab
 const $ = i => document.getElementById(i);
 const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const ls = {get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}}, del(k){try{localStorage.removeItem(k)}catch(e){}}};
 const J = k => { try { return JSON.parse(ls.get(k)); } catch (e) { return null; } };
+const GAS = /^https:\/\/script\.google\.com\/.+\/exec$/;
+const _qa = new URLSearchParams(location.search).get("api");
+if (_qa && GAS.test(_qa)) ls.set("st_api", _qa);
+if (ls.get("st_api")) API = ls.get("st_api");
 const icons = () => window.lucide && lucide.createIcons();
 const api = p => fetch(API + "?" + new URLSearchParams(p)).then(r => r.json());
 const post = d => fetch(API, {method:"POST", headers:{"Content-Type":"text/plain"}, body:JSON.stringify(d)}).then(r => r.json());
@@ -327,7 +333,11 @@ async function loadAdmin() {
     $("gate").classList.add("hidden"); $("dash").classList.remove("hidden");
     renderStats(); renderSites(); $("fs").innerHTML = "<option value='ALL'>All sites</option>" + r.sites.map(s => "<option value='" + esc(s.code) + "'>" + esc(s.name) + "</option>").join("");
     renderLog(); sub($("pL").classList.contains("hidden") ? "S" : "L"); icons();
-  } catch (e) { $("pinErr").textContent = "Could not reach the server. Check the API link."; }
+  } catch (e) {
+    $("pinErr").textContent = API.indexOf("PASTE") === 0
+      ? "The API link in index.html has not been set yet."
+      : "No valid reply from the server (" + e.message + "). Check the Web app link ends in /exec and access is set to Anyone.";
+  }
 }
 function shifts(logs) {
   const L = logs.slice().sort((a, b) => new Date(a.t) - new Date(b.t)), open = {}, out = [];
@@ -373,16 +383,25 @@ function csv() {
 }
 function qr(code) {
   const s = data.sites.find(x => x.code === code), q = qrcode(0, "M");
-  q.addData(location.origin + location.pathname + "?site=" + encodeURIComponent(code)); q.make();
+  q.addData(location.origin + location.pathname + "?site=" + encodeURIComponent(code) + (GAS.test(API) ? "&api=" + encodeURIComponent(API) : "")); q.make();
   $("qmT").textContent = s.name; $("qmC").textContent = s.code; $("qmQ").innerHTML = q.createImgTag(8, 8); $("qm").classList.remove("hidden");
 }
 
 /* ---------- init ---------- */
 $("bIn2").onclick = () => punch("IN"); $("bOut").onclick = () => punch("OUT");
-$("unlock").onclick = () => { pin = $("pin").value; $("pinErr").textContent = ""; loadAdmin(); };
+$("unlock").onclick = () => {
+  const u = $("apiUrl").value.trim();
+  $("pinErr").textContent = "";
+  if (u) {
+    if (!GAS.test(u)) return $("pinErr").textContent = "That link does not look right. It should start with https://script.google.com/ and end in /exec.";
+    API = u; ls.set("st_api", u);
+  }
+  pin = $("pin").value; loadAdmin();
+};
 $("pin").onkeydown = e => { if (e.key === "Enter") $("unlock").click(); };
 addEventListener("online", flush);
 $("sid").value = ls.get("st_id") || "";
+$("apiUrl").value = GAS.test(API) ? API : "";
 sw("W"); sub("S"); renderSession(); tick(); setInterval(tick, 1000); flush();
 const qs = new URLSearchParams(location.search).get("site");
 if (qs) loadSite(qs.toUpperCase());
