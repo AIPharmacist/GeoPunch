@@ -161,6 +161,28 @@ body{font-family:Inter,system-ui,sans-serif}
 </div>
 </main>
 
+<div id="am" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+ <div class="card w-full max-w-md p-5 space-y-3 max-h-[95vh] overflow-y-auto">
+  <div class="flex items-center justify-between">
+   <h3 class="font-bold flex items-center gap-2"><i data-lucide="map-pin-plus" class="w-5 h-5 text-amber-500"></i>Add job site</h3>
+   <button onclick="$('am').classList.add('hidden')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+  </div>
+  <div><label class="lbl" for="aN">Site name</label><input id="aN" class="inp" autocomplete="off" placeholder="e.g. Menara KL Tower A"></div>
+  <div class="grid grid-cols-2 gap-3">
+   <div><label class="lbl" for="aC">Site code</label><input id="aC" class="inp uppercase" autocomplete="off" placeholder="e.g. KL02"></div>
+   <div><label class="lbl" for="aR">Radius (m)</label><input id="aR" type="number" inputmode="numeric" value="150" class="inp"></div>
+  </div>
+  <div class="grid grid-cols-2 gap-3">
+   <div><label class="lbl" for="aLa">Latitude</label><input id="aLa" inputmode="decimal" autocomplete="off" class="inp" placeholder="3.139000"></div>
+   <div><label class="lbl" for="aLo">Longitude</label><input id="aLo" inputmode="decimal" autocomplete="off" class="inp" placeholder="101.686900"></div>
+  </div>
+  <button onclick="useHere()" class="btn"><i data-lucide="crosshair" class="w-3.5 h-3.5 text-sky-400"></i>Use my current location</button>
+  <p class="text-[11px] text-slate-500">Tip: in Google Maps, right-click the spot and tap the coordinates to copy them, then paste them into the Latitude box. Both numbers will fill in.</p>
+  <p id="aErr" class="text-xs text-rose-400 min-h-[1rem]"></p>
+  <button id="aSave" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm disabled:opacity-50">Save site</button>
+ </div>
+</div>
+
 <div id="qm" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
  <div class="bg-white text-slate-900 rounded-2xl p-6 w-full max-w-sm text-center">
   <div class="text-xs font-bold tracking-widest text-amber-600">SITE TRACKER</div>
@@ -357,11 +379,11 @@ function renderStats() {
     "<div class='card p-3 flex items-center gap-3'><div class='p-2 rounded-lg bg-" + x[1] + "-500/10 text-" + x[1] + "-400 border border-" + x[1] + "-500/20'><i data-lucide='" + x[0] + "' class='w-4 h-4'></i></div><div><div class='text-xs text-slate-400'>" + x[2] + "</div><div class='text-base font-bold'>" + x[3] + "</div></div></div>").join("");
 }
 function renderSites() {
-  $("pS").innerHTML = data.sites.map(s => {
+  $("pS").innerHTML = "<button onclick='openAdd()' class='card border-dashed !border-slate-700 hover:!border-amber-500 p-4 min-h-[120px] flex flex-col items-center justify-center gap-2 text-slate-400 hover:text-amber-400'><i data-lucide='plus-circle' class='w-6 h-6'></i><span class='text-sm font-bold'>Add job site</span></button>" + data.sites.map(s => {
     const n = SH.filter(h => active(h) && h.site === s.code).length;
     return "<div class='card p-4 space-y-3'><div class='flex justify-between items-start'><div><div class='font-bold'>" + esc(s.name) + "</div><div class='text-[11px] font-mono text-slate-400'>" + esc(s.code) + " · " + s.lat.toFixed(5) + ", " + s.lng.toFixed(5) + "</div></div>" +
       "<span class='text-[10px] font-bold px-2 py-0.5 rounded-full " + (n ? "bg-emerald-500/20 text-emerald-300" : "bg-slate-800 text-slate-400") + "'>" + n + " on site</span></div>" +
-      "<div class='text-xs text-slate-400'>Geofence radius: " + s.radius + " m</div><button onclick=\"qr('" + esc(s.code) + "')\" class='btn'><i data-lucide='qr-code' class='w-3.5 h-3.5 text-amber-400'></i>View QR poster</button></div>";
+      "<div class='text-xs text-slate-400'>Geofence radius: " + s.radius + " m</div><button onclick=\"qr('" + esc(s.code) + "')\" class='btn'><i data-lucide='qr-code' class='w-3.5 h-3.5 text-amber-400'></i>View QR poster</button><button onclick=\"delSite('" + esc(s.code) + "')\" class='btn !text-rose-300 ml-2'><i data-lucide='trash-2' class='w-3.5 h-3.5'></i>Delete</button></div>";
   }).join("");
 }
 function renderLog() {
@@ -387,8 +409,43 @@ function qr(code) {
   $("qmT").textContent = s.name; $("qmC").textContent = s.code; $("qmQ").innerHTML = q.createImgTag(8, 8); $("qm").classList.remove("hidden");
 }
 
+function openAdd() {
+  ["aN", "aC", "aLa", "aLo"].forEach(i => $(i).value = ""); $("aR").value = 150; $("aErr").textContent = "";
+  $("am").classList.remove("hidden"); icons();
+}
+function useHere() {
+  $("aErr").textContent = "Getting your location…";
+  getFix().then(f => {
+    $("aLa").value = f.lat.toFixed(6); $("aLo").value = f.lng.toFixed(6);
+    $("aErr").textContent = "Location filled in (GPS ±" + f.acc + " m). For best results, stand at the site entrance.";
+  }).catch(() => { $("aErr").textContent = "Could not get your location. Enter the coordinates by hand."; });
+}
+async function saveSite() {
+  $("aErr").textContent = ""; $("aSave").disabled = true;
+  try {
+    const r = await post({admin:1, pin, op:"addSite", name:$("aN").value, code:$("aC").value, lat:$("aLa").value, lng:$("aLo").value, radius:$("aR").value});
+    if (!r.ok) $("aErr").textContent = r.error || "Could not save the site.";
+    else { $("am").classList.add("hidden"); await loadAdmin(); }
+  } catch (e) { $("aErr").textContent = "No reply from the server. Check your connection."; }
+  $("aSave").disabled = false;
+}
+async function delSite(code) {
+  const s = data.sites.find(x => x.code === code), n = SH.filter(h => active(h) && h.site === code).length;
+  if (!confirm("Delete " + s.name + " (" + code + ")?" + (n ? "\n\n" + n + " worker(s) are currently on site here." : "") + "\n\nIts QR poster will stop working. Past attendance records are kept.")) return;
+  try {
+    const r = await post({admin:1, pin, op:"deleteSite", code});
+    if (!r.ok) return alert(r.error || "Could not delete the site.");
+    await loadAdmin();
+  } catch (e) { alert("No reply from the server. Check your connection."); }
+}
+
 /* ---------- init ---------- */
 $("bIn2").onclick = () => punch("IN"); $("bOut").onclick = () => punch("OUT");
+$("aSave").onclick = saveSite;
+$("aLa").addEventListener("input", () => {
+  const m = $("aLa").value.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
+  if (m) { $("aLa").value = m[1]; $("aLo").value = m[2]; }
+});
 $("unlock").onclick = () => {
   const u = $("apiUrl").value.trim();
   $("pinErr").textContent = "";
