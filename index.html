@@ -8,6 +8,8 @@
 <script src="https://cdn.jsdelivr.net/npm/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style type="text/tailwindcss">
 @layer components{
@@ -23,6 +25,8 @@ body{font-family:Inter,system-ui,sans-serif}
 @keyframes scan{0%,100%{top:5%}50%{top:92%}}
 .laser{animation:scan 2s infinite ease-in-out}
 #qmQ img{width:240px;height:240px;image-rendering:pixelated}
+#map img{max-width:none!important;max-height:none!important}
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;background:#f59e0b;border:3px solid #0f172a;transform:rotate(-45deg);box-shadow:0 2px 6px #0009}
 @media print{header,main,#qm .noprint{display:none!important}#qm{position:static!important;background:#fff!important}}
 </style>
 </head>
@@ -162,11 +166,18 @@ body{font-family:Inter,system-ui,sans-serif}
 </main>
 
 <div id="am" class="hidden fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
- <div class="card w-full max-w-md p-5 space-y-3 max-h-[95vh] overflow-y-auto">
+ <div class="card w-full max-w-lg p-5 space-y-3 max-h-[95vh] overflow-y-auto">
   <div class="flex items-center justify-between">
    <h3 class="font-bold flex items-center gap-2"><i data-lucide="map-pin-plus" class="w-5 h-5 text-amber-500"></i>Add job site</h3>
    <button onclick="$('am').classList.add('hidden')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
   </div>
+  <div>
+   <label class="lbl" for="aQ">Search a place</label>
+   <div class="flex gap-2"><input id="aQ" class="inp" autocomplete="off" placeholder="Address, building or landmark"><button onclick="findPlace()" class="btn !px-4 shrink-0" aria-label="Search"><i data-lucide="search" class="w-4 h-4"></i></button></div>
+  </div>
+  <div id="aRes" class="rounded-lg bg-slate-950 border border-slate-800 empty:hidden max-h-40 overflow-y-auto"></div>
+  <div id="map" class="h-60 rounded-xl overflow-hidden border border-slate-800 z-0 bg-slate-950"></div>
+  <p class="text-[11px] text-slate-500">Tap the map or drag the pin to the exact spot. The amber circle shows the geofence radius. Use the layer button on the map to switch to satellite.</p>
   <div><label class="lbl" for="aN">Site name</label><input id="aN" class="inp" autocomplete="off" placeholder="e.g. Menara KL Tower A"></div>
   <div class="grid grid-cols-2 gap-3">
    <div><label class="lbl" for="aC">Site code</label><input id="aC" class="inp uppercase" autocomplete="off" placeholder="e.g. KL02"></div>
@@ -177,7 +188,7 @@ body{font-family:Inter,system-ui,sans-serif}
    <div><label class="lbl" for="aLo">Longitude</label><input id="aLo" inputmode="decimal" autocomplete="off" class="inp" placeholder="101.686900"></div>
   </div>
   <button onclick="useHere()" class="btn"><i data-lucide="crosshair" class="w-3.5 h-3.5 text-sky-400"></i>Use my current location</button>
-  <p class="text-[11px] text-slate-500">Tip: in Google Maps, right-click the spot and tap the coordinates to copy them, then paste them into the Latitude box. Both numbers will fill in.</p>
+  <p class="text-[11px] text-slate-500">You can also paste coordinates copied from Google Maps (like 3.1390, 101.6869) into the Latitude box and both numbers will fill in.</p>
   <p id="aErr" class="text-xs text-rose-400 min-h-[1rem]"></p>
   <button id="aSave" class="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-sm disabled:opacity-50">Save site</button>
  </div>
@@ -241,11 +252,12 @@ function tick() {
 
 /* ---------- site + GPS ---------- */
 async function loadSite(code) {
-  try {
-    const r = await api({action:"site", code});
-    if (!r.ok) throw 0;
-    site = r.site;
-  } catch (e) { return toast("err", "Unknown site QR code. Please scan a valid Site Tracker code."); }
+  if (!GAS.test(API)) return toast("err", "This phone does not have the Site Tracker link yet. Scan the site QR poster once with your phone’s camera app, or ask your admin for the link.");
+  let r;
+  try { r = await api({action:"site", code}); }
+  catch (e) { return toast("err", "Could not reach the server. Check your internet connection and try again. If it keeps happening, ask your admin to check the Web app link."); }
+  if (!r.ok) return toast("err", "Site code “" + esc(code) + "” is not registered. Ask your admin to check the site list.");
+  site = r.site;
   $("ph").classList.add("hidden"); $("sc").classList.remove("hidden");
   $("sName").textContent = site.name; $("sCode").textContent = site.code;
   getFix().catch(() => {});
@@ -277,9 +289,9 @@ function getFix() {
 }
 
 /* ---------- QR scanner ---------- */
-function codeFrom(t) {
-  try { return (new URL(t).searchParams.get("site") || "").toUpperCase(); }
-  catch (e) { return /^[A-Za-z0-9_-]{2,20}$/.test(t) ? t.toUpperCase() : ""; }
+function parseQR(t) {
+  try { const u = new URL(t).searchParams; return {code:(u.get("site") || "").toUpperCase(), api:u.get("api")}; }
+  catch (e) { return {code:/^[A-Za-z0-9_-]{2,20}$/.test(t) ? t.toUpperCase() : "", api:null}; }
 }
 async function startScan() {
   try { stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}}); }
@@ -292,8 +304,11 @@ async function startScan() {
     if (v.videoWidth) {
       c.width = v.videoWidth; c.height = v.videoHeight; x.drawImage(v, 0, 0);
       const q = jsQR(x.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
-      const code = q && codeFrom(q.data);
-      if (code) { stopScan(); return loadSite(code); }
+      const r = q && parseQR(q.data);
+      if (r && r.code) {
+        if (r.api && GAS.test(r.api)) { API = r.api; ls.set("st_api", r.api); }
+        stopScan(); return loadSite(r.code);
+      }
     }
     requestAnimationFrame(loop);
   })();
@@ -409,14 +424,62 @@ function qr(code) {
   $("qmT").textContent = s.name; $("qmC").textContent = s.code; $("qmQ").innerHTML = q.createImgTag(8, 8); $("qm").classList.remove("hidden");
 }
 
+let map = null, mk = null, ring = null;
+function initMap() {
+  if (map) return;
+  if (!window.L) { $("map").innerHTML = "<div class='p-4 text-xs text-slate-400'>The map could not load. Enter the coordinates by hand.</div>"; return; }
+  const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {maxZoom:19, attribution:"© OpenStreetMap contributors"});
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:19, attribution:"Imagery © Esri"});
+  map = L.map("map", {layers:[street]}).setView([3.139, 101.6869], 10);
+  L.control.layers({"Map":street, "Satellite":sat}, null, {position:"topright"}).addTo(map);
+  map.on("click", e => setPin(e.latlng.lat, e.latlng.lng, false));
+}
+function setPin(lat, lng, zoom) {
+  $("aLa").value = lat.toFixed(6); $("aLo").value = lng.toFixed(6);
+  if (!map) return;
+  const rad = +$("aR").value || 150;
+  if (!mk) {
+    mk = L.marker([lat, lng], {draggable:true, icon:L.divIcon({className:"", html:"<div class='pin'></div>", iconSize:[26,26], iconAnchor:[13,28]})}).addTo(map);
+    mk.on("dragend", () => { const p = mk.getLatLng(); setPin(p.lat, p.lng, false); });
+    ring = L.circle([lat, lng], {radius:rad, color:"#f59e0b", weight:2, fillOpacity:.12}).addTo(map);
+  } else { mk.setLatLng([lat, lng]); ring.setLatLng([lat, lng]); }
+  ring.setRadius(rad);
+  if (zoom) map.setView([lat, lng], 17);
+}
+function fromFields() {
+  const la = parseFloat($("aLa").value), lo = parseFloat($("aLo").value);
+  if (isFinite(la) && isFinite(lo) && Math.abs(la) <= 90 && Math.abs(lo) <= 180) setPin(la, lo, true);
+}
+async function findPlace() {
+  const q = $("aQ").value.trim(); if (!q) return;
+  const box = $("aRes"); box.innerHTML = "<div class='text-xs text-slate-400 p-2.5'>Searching…</div>";
+  try {
+    const r = await (await fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=" + encodeURIComponent(q))).json();
+    box.innerHTML = r.length ? r.map((x, i) => "<button data-i='" + i + "' class='w-full text-left text-xs px-3 py-2 hover:bg-slate-800 border-b border-slate-800 last:border-0'>" + esc(x.display_name) + "</button>").join("")
+      : "<div class='text-xs text-slate-400 p-2.5'>No results. Try a nearby landmark, or drop the pin on the map.</div>";
+    box.onclick = e => {
+      const b = e.target.closest("button"); if (!b) return;
+      const x = r[b.dataset.i]; setPin(+x.lat, +x.lon, true);
+      if (!$("aN").value) $("aN").value = (x.name || x.display_name.split(",")[0]).trim();
+      box.innerHTML = "";
+    };
+  } catch (e) { box.innerHTML = "<div class='text-xs text-rose-400 p-2.5'>Search is unavailable right now. Drop the pin on the map instead.</div>"; }
+}
 function openAdd() {
-  ["aN", "aC", "aLa", "aLo"].forEach(i => $(i).value = ""); $("aR").value = 150; $("aErr").textContent = "";
+  ["aN", "aC", "aLa", "aLo", "aQ"].forEach(i => $(i).value = ""); $("aR").value = 150; $("aErr").textContent = ""; $("aRes").innerHTML = "";
   $("am").classList.remove("hidden"); icons();
+  initMap();
+  if (map) {
+    if (mk) { map.removeLayer(mk); map.removeLayer(ring); mk = ring = null; }
+    const s0 = data && data.sites[0];
+    map.setView(s0 ? [s0.lat, s0.lng] : [3.139, 101.6869], s0 ? 13 : 10);
+    setTimeout(() => map.invalidateSize(), 60);
+  }
 }
 function useHere() {
   $("aErr").textContent = "Getting your location…";
   getFix().then(f => {
-    $("aLa").value = f.lat.toFixed(6); $("aLo").value = f.lng.toFixed(6);
+    setPin(f.lat, f.lng, true);
     $("aErr").textContent = "Location filled in (GPS ±" + f.acc + " m). For best results, stand at the site entrance.";
   }).catch(() => { $("aErr").textContent = "Could not get your location. Enter the coordinates by hand."; });
 }
@@ -444,8 +507,11 @@ $("bIn2").onclick = () => punch("IN"); $("bOut").onclick = () => punch("OUT");
 $("aSave").onclick = saveSite;
 $("aLa").addEventListener("input", () => {
   const m = $("aLa").value.match(/^\s*(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)\s*$/);
-  if (m) { $("aLa").value = m[1]; $("aLo").value = m[2]; }
+  if (m) { $("aLa").value = m[1]; $("aLo").value = m[2]; fromFields(); }
 });
+$("aLa").addEventListener("change", fromFields); $("aLo").addEventListener("change", fromFields);
+$("aR").addEventListener("input", () => { if (ring) ring.setRadius(+$("aR").value || 150); });
+$("aQ").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); findPlace(); } });
 $("unlock").onclick = () => {
   const u = $("apiUrl").value.trim();
   $("pinErr").textContent = "";
